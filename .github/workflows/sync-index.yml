@@ -1,0 +1,45 @@
+name: Sync design-md index
+
+on:
+  # upstream 동기화 후 자동 실행
+  push:
+    paths:
+      - 'design-md/*/DESIGN.md'
+  # 매일 자정(UTC) 실행 — upstream에서 새 디자인 추가 감지
+  schedule:
+    - cron: '0 0 * * *'
+  # 수동 실행
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate index.json
+        run: |
+          # design-md/ 하위 디렉토리 중 DESIGN.md가 있는 것만 추출
+          dirs=$(find design-md -mindepth 1 -maxdepth 1 -type d -exec test -f {}/DESIGN.md \; -print \
+            | xargs -I{} basename {} \
+            | sort)
+
+          # JSON 배열로 변환
+          echo "$dirs" | jq -R -s 'split("\n") | map(select(. != ""))' > design-md/index.json
+
+      - name: Check for changes
+        id: diff
+        run: |
+          git diff --quiet design-md/index.json && echo "changed=false" >> "$GITHUB_OUTPUT" || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add design-md/index.json
+          git commit -m "Chore: design-md/index.json 자동 갱신"
+          git push
